@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 
 const notifications = [];
 
@@ -23,8 +24,11 @@ class ThrowingNotification {
 
 globalThis.window = { Notification: ThrowingNotification };
 
-const { sendDesktopNotification, getDesktopNotificationPermissionState } =
-  await import("./desktop.ts");
+const {
+  sendDesktopNotification,
+  getDesktopNotificationPermissionState,
+  setDesktopAppBadge,
+} = await import("./desktop.ts");
 
 // Stands in for the plugin's injected shim: `permission` is a cached value and
 // only `requestPermission()` reaches the backend and rewrites it.
@@ -166,4 +170,93 @@ test("granted is returned untouched and never triggers a request", async () => {
 
   assert.equal(permission, "granted");
   assert.equal(Notification.requestCount, 0);
+});
+
+test("Windows badge uses overlay and honors the latest request", async () => {
+  await withEnvironment(
+    { platform: "Win32", isTauri: true, notification: WorkingNotification },
+    async () => {
+      const updates = [];
+      let releaseImage;
+      let imageRequests = 0;
+      const imageReady = new Promise((resolve) => {
+        releaseImage = resolve;
+      });
+      mockWindows("main");
+      mockIPC((command, args) => {
+        if (command === "plugin:image|new") {
+          imageRequests += 1;
+          assert.equal(args.width, 16);
+          assert.equal(args.height, 16);
+          assert.equal(args.rgba.length, 16 * 16 * 4);
+          return imageReady;
+        }
+        if (command === "plugin:window|set_overlay_icon") {
+          assert.equal(args.label, "main");
+          updates.push(args.value);
+        }
+      });
+
+      try {
+        // Clear while the first native image is still being created.
+        const show = setDesktopAppBadge({ kind: "count", count: 1 });
+        const hide = setDesktopAppBadge({ kind: "none" });
+        releaseImage(42);
+        await Promise.all([show, hide]);
+        assert.deepEqual(updates, [undefined]);
+
+        updates.length = 0;
+        const cases = [
+          [{ kind: "count", count: 1 }, 42],
+          [{ kind: "count", count: 0 }, undefined],
+          [{ kind: "dot" }, 42],
+          [{ kind: "none" }, undefined],
+        ];
+        for (const [state, expected] of cases) {
+          const before = updates.length;
+          await setDesktopAppBadge(state);
+          assert.equal(updates.length, before + 1);
+          assert.equal(updates.at(-1), expected);
+        }
+        assert.equal(imageRequests, 1);
+
+        // The same ordering guarantee applies to a cached image.
+        updates.length = 0;
+        await Promise.all([
+          setDesktopAppBadge({ kind: "count", count: 1 }),
+          setDesktopAppBadge({ kind: "none" }),
+        ]);
+        assert.ok(updates.length > 0);
+        assert.equal(updates.at(-1), undefined);
+      } finally {
+        clearMocks();
+      }
+    },
+  );
+});
+
+test("macOS badge retains its native count and label behavior", async () => {
+  await withEnvironment(
+    { platform: "MacIntel", isTauri: true, notification: WorkingNotification },
+    async () => {
+      const calls = [];
+      mockWindows("main");
+      mockIPC((command, args) => {
+        calls.push([command, args.value]);
+      });
+      try {
+        await setDesktopAppBadge({ kind: "count", count: 3 });
+        await setDesktopAppBadge({ kind: "dot" });
+        await setDesktopAppBadge({ kind: "none" });
+        assert.deepEqual(calls, [
+          ["plugin:window|set_badge_count", 3],
+          ["plugin:window|set_badge_label", " "],
+          ["plugin:window|set_badge_label", ""],
+          ["plugin:window|set_badge_count", undefined],
+        ]);
+      } finally {
+        clearMocks();
+      }
+    },
+  );
 });

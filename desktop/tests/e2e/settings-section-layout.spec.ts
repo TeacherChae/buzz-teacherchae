@@ -127,3 +127,48 @@ test("Profile sections keep visible cards and aligned actions", async ({
       .getByText("Update status", { exact: true }),
   ).toHaveCount(1);
 });
+
+test("app badge settings persist", async ({ page }) => {
+  await page.setViewportSize({
+    width: 900,
+    height: 500,
+  });
+  await installMockBridge(page);
+  await page.goto("/");
+  await openSettings(page, "notifications");
+
+  const alerts = page.getByTestId("notifications-desktop-toggle");
+  const badge = page.getByTestId("notifications-app-badge-toggle");
+
+  await expect(alerts).toHaveAttribute("aria-checked", "true");
+  await expect(badge).toHaveAttribute("aria-checked", "true");
+
+  // Turning off popups must leave the badge setting available.
+  await alerts.click();
+  await expect(alerts).toHaveAttribute("aria-checked", "false");
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveAttribute("aria-checked", "true");
+
+  await badge.click();
+  await expect(badge).toHaveAttribute("aria-checked", "false");
+
+  // Wait until both preferences are saved for the mock identity.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const key = "buzz-notification-settings.v2:" + "deadbeef".repeat(8);
+        const saved = JSON.parse(localStorage.getItem(key) ?? "{}");
+        return [saved.desktopEnabled, saved.appBadgeEnabled];
+      }),
+    )
+    .toEqual([false, false]);
+
+  await page.reload();
+  await expect(alerts).toHaveAttribute("aria-checked", "false");
+  await expect(badge).toHaveAttribute("aria-checked", "false");
+
+  // The badge can be enabled again without enabling popups.
+  await badge.click();
+  await expect(badge).toHaveAttribute("aria-checked", "true");
+  await expect(alerts).toHaveAttribute("aria-checked", "false");
+});

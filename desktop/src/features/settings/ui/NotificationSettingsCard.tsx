@@ -32,6 +32,7 @@ export function NotificationSettingsCard({
   notificationSettings,
   onSetDesktopNotificationsEnabled,
   onSetAllSlotAlertsEnabled,
+  onSetAppBadgeEnabled,
   onSetHomeBadgeEnabled,
   onSetSlotAlertsEnabled,
   onSetNotifyWhileViewing,
@@ -43,6 +44,7 @@ export function NotificationSettingsCard({
   notificationSettings: NotificationSettings;
   onSetDesktopNotificationsEnabled: (enabled: boolean) => Promise<boolean>;
   onSetAllSlotAlertsEnabled: (enabled: boolean) => void;
+  onSetAppBadgeEnabled: (enabled: boolean) => void;
   onSetHomeBadgeEnabled: (enabled: boolean) => void;
   onSetSlotAlertsEnabled: (slot: SoundSlot, enabled: boolean) => void;
   onSetNotifyWhileViewing: (enabled: boolean) => void;
@@ -259,6 +261,26 @@ export function NotificationSettingsCard({
         ) : null}
 
         <SettingsOptionGroup title="Badges">
+          <SettingsOptionRow>
+            <div className="min-w-0">
+              <label className="text-sm font-medium" htmlFor="app-badge-switch">
+                App icon badge
+              </label>
+              <p
+                className="text-sm font-normal text-muted-foreground/70"
+                data-settings-subcopy
+              >
+                Show badges on the taskbar or Dock, independently of desktop
+                alerts.
+              </p>
+            </div>
+            <Switch
+              checked={notificationSettings.appBadgeEnabled}
+              data-testid="notifications-app-badge-toggle"
+              id="app-badge-switch"
+              onCheckedChange={onSetAppBadgeEnabled}
+            />
+          </SettingsOptionRow>
           <SettingsOptionRow>
             <div className="min-w-0">
               <label

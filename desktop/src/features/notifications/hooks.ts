@@ -41,6 +41,7 @@ const EMPTY_FEED_ID_SET: ReadonlySet<string> = new Set();
 
 export type NotificationSettings = {
   desktopEnabled: boolean;
+  appBadgeEnabled: boolean;
   homeBadgeEnabled: boolean;
   notifyWhileViewing: boolean;
   sounds: SlotSounds;
@@ -55,6 +56,7 @@ export type NotificationSettings = {
 
 const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   desktopEnabled: true,
+  appBadgeEnabled: true,
   homeBadgeEnabled: true,
   notifyWhileViewing: false,
   sounds: { ...DEFAULT_SLOT_SOUNDS },
@@ -94,7 +96,11 @@ function notificationSettingsStorageKey(pubkey: string) {
   return `${NOTIFICATION_SETTINGS_STORAGE_KEY}:${pubkey}`;
 }
 
-function sanitizeNotificationSettings(value: unknown): NotificationSettings {
+/** Normalizes saved notification settings, including older
+preferences. */
+export function sanitizeNotificationSettings(
+  value: unknown,
+): NotificationSettings {
   if (!value || typeof value !== "object") {
     return DEFAULT_NOTIFICATION_SETTINGS;
   }
@@ -105,6 +111,10 @@ function sanitizeNotificationSettings(value: unknown): NotificationSettings {
       typeof candidate.desktopEnabled === "boolean"
         ? candidate.desktopEnabled
         : DEFAULT_NOTIFICATION_SETTINGS.desktopEnabled,
+    appBadgeEnabled:
+      typeof candidate.appBadgeEnabled === "boolean"
+        ? candidate.appBadgeEnabled
+        : DEFAULT_NOTIFICATION_SETTINGS.appBadgeEnabled,
     homeBadgeEnabled:
       typeof candidate.homeBadgeEnabled === "boolean"
         ? candidate.homeBadgeEnabled
@@ -297,6 +307,13 @@ export function useNotificationSettings(pubkey?: string) {
     }
   }, []);
 
+  const setAppBadgeEnabled = React.useCallback((enabled: boolean) => {
+    setSettings((current) => ({
+      ...current,
+      appBadgeEnabled: enabled,
+    }));
+  }, []);
+
   const setHomeBadgeEnabled = React.useCallback((enabled: boolean) => {
     setSettings((current) => ({
       ...current,
@@ -371,6 +388,7 @@ export function useNotificationSettings(pubkey?: string) {
     isUpdatingDesktopEnabled,
     permission,
     setDesktopEnabled,
+    setAppBadgeEnabled,
     setHomeBadgeEnabled,
     setAllSlotAlertsEnabled,
     setNotifyWhileViewing,
