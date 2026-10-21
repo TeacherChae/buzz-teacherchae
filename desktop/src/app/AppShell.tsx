@@ -665,6 +665,7 @@ export function AppShell() {
     [openSearchHit],
   );
   useAppShellLifecycleEffects({
+    appBadgeEnabled: notificationSettings.settings.appBadgeEnabled,
     desktopBadgeEnabled: !isHuddleRoom,
     homeBadgeCountExcludingHighPriority,
     topLevelUnreadChannelIds,
@@ -807,6 +808,9 @@ export function AppShell() {
                           onSectionChange={handleSettingsSectionChange}
                           onSetDesktopNotificationsEnabled={
                             notificationSettings.setDesktopEnabled
+                          }
+                          onSetAppBadgeEnabled={
+                            notificationSettings.setAppBadgeEnabled
                           }
                           onSetHomeBadgeEnabled={
                             notificationSettings.setHomeBadgeEnabled
