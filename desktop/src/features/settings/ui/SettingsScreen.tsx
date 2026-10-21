@@ -14,6 +14,7 @@ type SettingsScreenProps = {
   onClose: () => void;
   onSectionChange: (section: SettingsSection) => void;
   onSetDesktopNotificationsEnabled: (enabled: boolean) => Promise<boolean>;
+  onSetAppBadgeEnabled: (enabled: boolean) => void;
   onSetHomeBadgeEnabled: (enabled: boolean) => void;
   onSetSlotAlertsEnabled: (slot: SoundSlot, enabled: boolean) => void;
   onSetNotifyWhileViewing: (enabled: boolean) => void;
@@ -32,6 +33,7 @@ export function SettingsScreen({
   onClose,
   onSectionChange,
   onSetDesktopNotificationsEnabled,
+  onSetAppBadgeEnabled,
   onSetHomeBadgeEnabled,
   onSetSlotAlertsEnabled,
   onSetNotifyWhileViewing,
@@ -50,6 +52,7 @@ export function SettingsScreen({
       onClose={onClose}
       onSectionChange={onSectionChange}
       onSetDesktopNotificationsEnabled={onSetDesktopNotificationsEnabled}
+      onSetAppBadgeEnabled={onSetAppBadgeEnabled}
       onSetHomeBadgeEnabled={onSetHomeBadgeEnabled}
       onSetSlotAlertsEnabled={onSetSlotAlertsEnabled}
       onSetNotifyWhileViewing={onSetNotifyWhileViewing}

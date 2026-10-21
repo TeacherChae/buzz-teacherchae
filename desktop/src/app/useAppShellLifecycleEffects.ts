@@ -8,6 +8,7 @@ import { relayClient } from "@/shared/api/relayClient";
 import { useRelayResumeTriggers } from "@/shared/api/useRelayResumeTriggers";
 
 type AppShellLifecycleEffectsOptions = {
+  appBadgeEnabled: boolean;
   desktopBadgeEnabled: boolean;
   homeBadgeCountExcludingHighPriority: number;
   topLevelUnreadChannelIds: ReadonlySet<string>;
@@ -15,6 +16,7 @@ type AppShellLifecycleEffectsOptions = {
 };
 
 export function useAppShellLifecycleEffects({
+  appBadgeEnabled,
   desktopBadgeEnabled,
   homeBadgeCountExcludingHighPriority,
   topLevelUnreadChannelIds,
@@ -75,6 +77,10 @@ export function useAppShellLifecycleEffects({
       return;
     }
 
+    if (!appBadgeEnabled) {
+      void setDesktopAppBadge({ kind: "none" });
+      return;
+    }
     const count =
       unreadChannelNotificationCount + homeBadgeCountExcludingHighPriority;
     void setDesktopAppBadge(
@@ -83,6 +89,7 @@ export function useAppShellLifecycleEffects({
         : { kind: topLevelUnreadChannelIds.size ? "dot" : "none" },
     );
   }, [
+    appBadgeEnabled,
     desktopBadgeEnabled,
     homeBadgeCountExcludingHighPriority,
     topLevelUnreadChannelIds,

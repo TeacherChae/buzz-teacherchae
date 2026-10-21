@@ -143,6 +143,7 @@ export type SettingsPanelProps = {
   notificationPermission: DesktopNotificationPermissionState;
   notificationSettings: NotificationSettings;
   onSetDesktopNotificationsEnabled: (enabled: boolean) => Promise<boolean>;
+  onSetAppBadgeEnabled: (enabled: boolean) => void;
   onSetHomeBadgeEnabled: (enabled: boolean) => void;
   onSetSlotAlertsEnabled: (slot: SoundSlot, enabled: boolean) => void;
   onSetNotifyWhileViewing: (enabled: boolean) => void;
@@ -821,6 +822,7 @@ export function renderSettingsSection(
           onSetDesktopNotificationsEnabled={
             props.onSetDesktopNotificationsEnabled
           }
+          onSetAppBadgeEnabled={props.onSetAppBadgeEnabled}
           onSetHomeBadgeEnabled={props.onSetHomeBadgeEnabled}
           onSetSlotAlertsEnabled={props.onSetSlotAlertsEnabled}
           onSetNotifyWhileViewing={props.onSetNotifyWhileViewing}

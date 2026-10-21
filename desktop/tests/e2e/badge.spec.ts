@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { waitForAnimations } from "../helpers/animations";
 import { TEST_IDENTITIES, installMockBridge } from "../helpers/bridge";
+import { openSettings } from "../helpers/settings";
 
 const DEFAULT_MOCK_PUBKEY = "deadbeef".repeat(8);
 const SHOTS = "test-results/channel-row-decoration-pr";
@@ -992,4 +993,55 @@ test("remote read-state rollback is ignored while local mark-unread still increm
   );
 
   await expect(page.getByTestId("channel-unread-random")).toHaveCount(0);
+});
+
+test("app badge switch clears", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("channel-alice-tyler").click();
+  await waitForMockLiveSubscription(page, "alice-tyler");
+  await page.getByTestId("channel-general").click();
+  await openSettings(page, "notifications");
+
+  const alerts = page.getByTestId("notifications-desktop-toggle");
+  const badge = page.getByTestId("notifications-app-badge-toggle");
+
+  await expect(alerts).toHaveAttribute("aria-checked", "true");
+  await alerts.click();
+  await expect(alerts).toHaveAttribute("aria-checked", "false");
+
+  // Add an unread DM using the mock bridge.
+  await page.evaluate((pubkey) => {
+    const emit = window.__BUZZ_E2E_EMIT_MOCK_MESSAGE__;
+    if (!emit) {
+      throw new Error("Mock emitter missing");
+    }
+    emit({
+      channelName: "alice-tyler",
+      content: "Badge test DM",
+      kind: 40002,
+      pubkey,
+      createdAt: Math.floor(Date.now() / 1000) + 1,
+    });
+  }, TEST_IDENTITIES.alice.pubkey);
+
+  await expect
+    .poll(async () => {
+      return (await getBadgeState(page)).count;
+    })
+    .toBeGreaterThan(0);
+
+  await badge.click();
+  await expect(badge).toHaveAttribute("aria-checked", "false");
+  await waitForBadgeState(page, {
+    state: "none",
+    count: 0,
+  });
+
+  await badge.click();
+  await expect
+    .poll(async () => {
+      return (await getBadgeState(page)).count;
+    })
+    .toBeGreaterThan(0);
+  await expect(alerts).toHaveAttribute("aria-checked", "false");
 });

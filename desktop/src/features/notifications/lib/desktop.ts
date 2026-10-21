@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { Image } from "@tauri-apps/api/image";
 import { UserAttentionType, getCurrentWindow } from "@tauri-apps/api/window";
 import {
   isPermissionGranted,
@@ -11,6 +12,7 @@ import {
   isMacPlatform,
   isWindowsPlatform,
 } from "@/shared/lib/platform";
+import { APP_BADGE_ICON_SIZE, createAppBadgeIconPixels } from "./appBadgeIcon";
 
 // Backend event emitted when a native Linux notification is clicked or a
 // queued macOS activation becomes available. See src-tauri notification code.
@@ -339,6 +341,24 @@ export async function listenForDesktopNotificationActions(
   };
 }
 
+// Keep one native image resource for this renderer session.
+let windowsBadgeImage: Promise<Image> | null = null;
+let windowsBadgeRequest = 0;
+
+function getWindowsBadgeImage(): Promise<Image> {
+  if (!windowsBadgeImage) {
+    windowsBadgeImage = Image.new(
+      createAppBadgeIconPixels(),
+      APP_BADGE_ICON_SIZE,
+      APP_BADGE_ICON_SIZE,
+    ).catch((error) => {
+      windowsBadgeImage = null;
+      throw error;
+    });
+  }
+  return windowsBadgeImage;
+}
+
 export async function setDesktopAppBadge(state: AppBadgeState): Promise<void> {
   if (typeof window !== "undefined") {
     const testWindow = window as TestWindow;
@@ -352,6 +372,19 @@ export async function setDesktopAppBadge(state: AppBadgeState): Promise<void> {
   }
 
   try {
+    if (isWindowsPlatform()) {
+      const request = ++windowsBadgeRequest;
+      const visible =
+        state.kind === "dot" || (state.kind === "count" && state.count > 0);
+      const icon = visible ? await getWindowsBadgeImage() : undefined;
+      // A slow image creation must not undo a newer clear request.
+      if (request !== windowsBadgeRequest) {
+        return;
+      }
+      await getCurrentWindow().setOverlayIcon(icon);
+      return;
+    }
+
     if (state.kind === "count") {
       await getCurrentWindow().setBadgeCount(state.count);
     } else if (state.kind === "dot" && isMacPlatform()) {
@@ -362,8 +395,11 @@ export async function setDesktopAppBadge(state: AppBadgeState): Promise<void> {
       }
       await getCurrentWindow().setBadgeCount(undefined);
     }
-  } catch {
-    // Ignore unsupported platforms and best-effort badge sync failures.
+  } catch (error) {
+    if (isWindowsPlatform()) {
+      console.warn("Failed to update the taskbar badge", error);
+    }
+    // Preserve best-effort behavior on unsupported platforms.
   }
 }
 
