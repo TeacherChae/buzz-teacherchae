@@ -1,0 +1,161 @@
+name: Team Desktop Build
+
+# Build a reviewed commit by explicitly pushing a NEW team tag.
+# No default-branch change, upstream release tags, or automatic promotion.
+on:
+  push:
+    tags:
+      - 'team-desktop-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: team-desktop-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'TeacherChae/buzz-teacherchae'
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+          - os: macos-15
+            target: aarch64-apple-darwin
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET: ${{ matrix.target }}
+      CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+      VITE_BUZZ_BESTIE: '0'
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require source from the team branch
+        run: git merge-base --is-ancestor HEAD origin/team/custom-desktop
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24.15.0
+          package-manager-cache: false
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 11.4.0
+
+      - name: Install dependencies from the lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Test team packaging contract
+        run: pnpm --dir desktop exec node --test scripts/prepare-team-release.test.mjs
+
+      - name: Prepare team version and updater configuration
+        id: version
+        working-directory: desktop
+        env:
+          BUZZ_UPDATER_PUBLIC_KEY: ${{ secrets.BUZZ_UPDATER_PUBLIC_KEY }}
+        run: node scripts/prepare-team-release.mjs "$GITHUB_REF_NAME"
+
+      - name: Set up the pinned Rust toolchain and lockfile
+        run: |
+          rustup target add "$TARGET"
+          cargo update --workspace --manifest-path desktop/src-tauri/Cargo.toml
+
+      - name: Build functional sidecars
+        run: |
+          packages=(-p buzz-acp -p buzz-agent -p buzz-dev-mcp -p git-credential-nostr -p buzz-cli)
+          if [[ "$RUNNER_OS" == 'macOS' ]]; then
+            packages+=(-p buzz-backend-kubernetes)
+          fi
+          cargo build --release --locked --target "$TARGET" "${packages[@]}"
+          ./scripts/bundle-sidecars.sh "$TARGET"
+
+      # Keep the upstream macOS MeshLLM feature instead of silently dropping it.
+      - name: Prepare macOS Metal libraries
+        if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+          CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
+          LLAMA_STAGE_BACKEND: metal
+          LLAMA_STAGE_BUILD_DIR: ${{ github.workspace }}/.cache/mesh-llama/build-stage-abi-metal
+        run: |
+          set -euo pipefail
+          REV=$(python3 -c 'import tomllib; d=tomllib.load(open("Cargo.lock", "rb")); p=next(p for p in d["package"] if p["name"] == "mesh-llm-sdk"); print(p["source"].rsplit("#", 1)[1])')
+          SHORT="${REV:0:7}"
+          cargo fetch --locked --manifest-path desktop/src-tauri/Cargo.toml
+          MESH_ROOT=$(find "${CARGO_HOME:-$HOME/.cargo}/git/checkouts" -path "*/$SHORT" -type d -name "$SHORT" | head -1)
+          [[ -n "$MESH_ROOT" ]] || { echo 'MeshLLM checkout missing' >&2; exit 1; }
+          "$MESH_ROOT/scripts/prepare-llama.sh" pinned
+          "$MESH_ROOT/scripts/build-llama.sh" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+
+      # No private updater signing secrets are exposed anywhere in this job.
+      # Use the repo's pnpm tauri wrapper (not pnpm exec tauri) for packaging.
+      - name: Build Windows test installer
+        if: runner.os == 'Windows'
+        working-directory: desktop
+        run: |
+          pnpm tauri build --target "$TARGET" --bundles nsis \
+            --config src-tauri/tauri.release.conf.json -- --locked
+
+      - name: Build ad-hoc macOS test app
+        if: runner.os == 'macOS'
+        working-directory: desktop
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
+          CMAKE_OSX_DEPLOYMENT_TARGET: '11.0'
+          LLAMA_STAGE_BACKEND: metal
+          LLAMA_STAGE_BUILD_DIR: ${{ github.workspace }}/.cache/mesh-llama/build-stage-abi-metal
+          SKIPPY_LLAMA_AUTO_BUILD: '0'
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+        run: |
+          pnpm tauri build --target "$TARGET" --bundles app dmg --features mesh-llm \
+            --config src-tauri/tauri.release.conf.json -- --locked
+
+      - name: Verify macOS signature integrity and entitlements
+        if: runner.os == 'macOS'
+        run: |
+          APP="desktop/src-tauri/target/$TARGET/release/bundle/macos/Buzz.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          desktop/scripts/verify-macos-entitlements.sh "$APP"
+
+      - name: Stage only installers and update artifacts
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          BUNDLE="desktop/src-tauri/target/$TARGET/release/bundle"
+          mkdir -p team-artifacts
+          if [[ "$RUNNER_OS" == 'Windows' ]]; then
+            INSTALLERS=("$BUNDLE"/nsis/*.exe)
+            [[ ${#INSTALLERS[@]} -eq 1 ]] || { echo 'Expected one NSIS installer' >&2; exit 1; }
+            cp "${INSTALLERS[0]}" team-artifacts/
+          else
+            INSTALLERS=("$BUNDLE"/dmg/*.dmg)
+            [[ ${#INSTALLERS[@]} -eq 1 ]] || { echo 'Expected one DMG' >&2; exit 1; }
+            test -d "$BUNDLE/macos/Buzz.app"
+            cp "${INSTALLERS[0]}" team-artifacts/
+            # Retain the exact ad-hoc signed app for later, gated updater signing.
+            tar -czf team-artifacts/Buzz.app.tar.gz -C "$BUNDLE/macos" Buzz.app
+          fi
+          printf 'version=%s\nsource=%s\ntarget=%s\n' "$VERSION" "$(git rev-parse HEAD)" "$TARGET" > team-artifacts/build-info.txt
+
+      - name: Upload test installers (not a release or updater promotion)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: buzz-team-${{ github.ref_name }}-${{ matrix.target }}-${{ github.run_attempt }}
+          path: team-artifacts/
+          if-no-files-found: error
+          retention-days: 7
