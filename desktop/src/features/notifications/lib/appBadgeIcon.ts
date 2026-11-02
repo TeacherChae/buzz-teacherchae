@@ -5,7 +5,7 @@ export function createAppBadgeIconPixels(): Uint8Array {
   const size = APP_BADGE_ICON_SIZE;
   const pixels = new Uint8Array(size * size * 4);
   const center = (size - 1) / 2;
-  const radius = 6;
+  const radius = 5;
 
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
