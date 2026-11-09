@@ -371,6 +371,9 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
   await page
     .getByRole("button", { name: `${agentName} agent profile` })
     .click();
+  // Let the profile panel settle first: an unstable first click makes
+  // Playwright force-scroll the body, which conceals (inerts) the actions.
+  await waitForAnimations(page);
   await page.getByTestId("user-profile-message").click();
   await expect(page.getByTestId("chat-header-dm-avatar")).toBeVisible();
   const dmChannelId = await page.evaluate(() => {
@@ -414,6 +417,7 @@ test("owned agent profile stays in parity between Agents and its DM", async ({
     .click();
   const agentsSurface = await readOwnedAgentProfileContract(page);
 
+  await waitForAnimations(page);
   await page.getByTestId("user-profile-message").click();
   await expect(page.getByTestId("chat-header-dm-avatar")).toBeVisible();
   await page
