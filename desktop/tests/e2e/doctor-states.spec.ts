@@ -180,12 +180,14 @@ test.describe("Doctor panel state screenshots", () => {
         "0px",
       );
     }
+    // Chromium 158 (Playwright 1.65) serializes Tailwind's `items-end`
+    // (`align-items: flex-end`) as `flow-end`; both mean bottom alignment.
     await expect(
       page
         .getByRole("heading", { name: "Agent runtimes", exact: true })
         .locator("..")
         .locator(".."),
-    ).toHaveCSS("align-items", "flex-end");
+    ).toHaveCSS("align-items", /^(flex|flow)-end$/);
     for (const runtimeId of ["goose", "claude", "buzz-agent"]) {
       await expect(
         page.getByTestId(`doctor-runtime-menu-${runtimeId}`),
