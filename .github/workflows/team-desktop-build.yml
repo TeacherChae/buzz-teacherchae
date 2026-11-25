@@ -320,9 +320,14 @@ jobs:
           set -euo pipefail
           shopt -s nullglob
           VERSION="${TAG#team-desktop-v}"
-          DIRS=(handoff/"buzz-team-signed-$TAG"-*)
-          [[ ${#DIRS[@]} -ge 1 ]] || { echo 'No signed artifact' >&2; exit 1; }
-          cp -R "$(printf '%s\n' "${DIRS[@]}" | sort -V | tail -n 1)" signed
+          # A single matching artifact is unpacked straight into handoff/;
+          # several (one per sign attempt) each get their own directory.
+          DIRS=(handoff/"buzz-team-signed-$TAG"-*/)
+          if [[ ${#DIRS[@]} -ge 1 ]]; then
+            cp -R "$(printf '%s\n' "${DIRS[@]}" | sort -V | tail -n 1)" signed
+          else
+            cp -R handoff signed
+          fi
           EXES=(signed/*.exe)
           TARBALLS=(signed/*.app.tar.gz)
           [[ ${#EXES[@]} -eq 1 && ${#TARBALLS[@]} -eq 1 ]] || {
